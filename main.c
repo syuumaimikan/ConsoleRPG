@@ -54,7 +54,7 @@ int main(void)
                party[i].critical_damage,
                party[i].spells[0] == '\0' ? "なし" : party[i].spells);
     }
-
+    printf("--------------------------------\n");
     for (int i = 0; i < num_enemy; i++)
     {
         printf("エネミー名: %s, レベル: %d, HP: %d, MP: %d, "
@@ -95,6 +95,7 @@ int main(void)
     }
 
     // ===== メインゲームループ =====
+    printf("--------------------------------\n");
     int game_over = 0;
     printf("ゲーム開始！\n");
 
