@@ -96,6 +96,8 @@ void sort_order(int order[][3], int size)
 
 void attack(Character *attacker, Character *defender)
 {
+    printf("  %sの攻撃！\n", attacker->name);
+
     int damage = attacker->attack - defender->defense;
     if (damage < 0)
         damage = 0;
@@ -104,13 +106,16 @@ void attack(Character *attacker, Character *defender)
     if (defender->hp < 0)
         defender->hp = 0;
 
-    printf("%sは%sに%dのダメージを与えた！\n", attacker->name, defender->name, damage);
-    printf("%sの残りHP: %d\n", defender->name, defender->hp);
+    printf("  %sに %d ダメージ！\n", defender->name, damage);
+    printf("  %sの残りHP: %d\n", defender->name, defender->hp);
+
     if (defender->hp == 0)
     {
-        printf("%sは倒れた！\n", defender->name);
-        defender->status = 1; // 死亡状態に設定
+        printf("  ★ %sは倒れた！\n", defender->name);
+        defender->status = 1;
     }
+
+    printf("--------------------------------\n");
 }
 
 void command(Character *my_character, Character *target_character, int myparty_count, int eneParty_count, int cmd)
@@ -118,6 +123,27 @@ void command(Character *my_character, Character *target_character, int myparty_c
     int target_index;
     switch (cmd)
     {
+    case 0:
+        // 情報確認コマンド
+        print_status(my_character);
+        printf("生存している仲間:\n");
+        for (int i = 0; i < myparty_count; i++)
+        {
+            if (target_character[i].status == 0) // 生存している仲間を表示
+            {
+                printf("  %d: %s (HP: %d)\n", i, target_character[i].name, target_character[i].hp);
+            }
+        }
+        printf("--------------------------------\n");
+        printf("生存しているエネミー:\n");
+        for (int i = 0; i < eneParty_count; i++)
+        {
+            if (target_character[i].status == 0) // 生存しているエネミーを表示
+            {
+                printf("  %d: %s (HP: %d)\n", i, target_character[i].name, target_character[i].hp);
+            }
+        }
+        break;
     case 1:
         // 攻撃コマンド
         if (my_character->type == 0)
@@ -158,12 +184,69 @@ void command(Character *my_character, Character *target_character, int myparty_c
             attack(my_character, &target_character[alive_players[random_index]]);
         }
         break;
-
+    case 2:
+        // 魔法コマンド（仮実装）
+        if (my_character->type == 0)
+        {
+            printf("魔法はまだ実装されていません\n");
+        }
+        else
+        {
+            // エネミーの魔法攻撃処理　生存しているプレイヤーからランダムで一体を攻撃
+            int alive_players[MAX_CHARACTERS];
+            int alive_count = 0;
+            for (int i = 0; i < myparty_count; i++)
+            {
+                if (target_character[i].status == 0) // 生存しているプレイヤーをリストに追加
+                {
+                    alive_players[alive_count++] = i;
+                }
+            }
+            if (alive_count == 0)
+                return; // もう攻撃対象がいない
+            int random_index = rand() % alive_count;
+            printf("エネミーは魔法攻撃！\n");
+            attack(my_character, &target_character[alive_players[random_index]]);
+        }
+        break;
+    case 3:
+        // 防御コマンド（仮実装）
+        printf("防御はまだ実装されていません\n");
+        break;
+    case 4:
+        // 回避コマンド（仮実装）
+        printf("回避はまだ実装されていません\n");
+        break;
     default:
         printf("無効なコマンドです\n");
         command(my_character, target_character, myparty_count, eneParty_count, cmd);
         break;
     }
+}
+
+void print_status(Character *ch)
+{
+    printf("【%s】のステータス:\n", ch->name);
+    printf("  HP: %d/%d\n", ch->hp, ch->max_hp);
+    printf("  MP: %d/%d\n", ch->mp, ch->max_mp);
+    printf("  攻撃: %d\n", ch->attack);
+    printf("  防御: %d\n", ch->defense);
+    printf("  素早さ: %d\n", ch->speed);
+    printf("  クリティカル率: %.2f\n", ch->cc);
+    printf("  クリティカルダメージ: %.1f\n", ch->cd);
+    printf("--------------------------------\n");
+}
+
+void print_turn_start(int turn)
+{
+    printf("\n==============================\n");
+    printf("◆ %dターン目 開始\n", turn);
+    printf("==============================\n\n");
+}
+
+void print_actor_turn(Character *ch)
+{
+    printf(">【%s】のターン（HP: %d）\n", ch->name, ch->hp);
 }
 
 #endif /* RPG_H */

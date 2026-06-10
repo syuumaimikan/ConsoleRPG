@@ -85,7 +85,7 @@ int main(void)
     {
         sort_order(order, num_characters + num_enemys);
 
-        printf("%dターン開始！\n", turn);
+        print_turn_start(turn);
 
         for (int i = 0; i < num_characters + num_enemys; i++)
         {
@@ -99,18 +99,22 @@ int main(void)
             if (type == 1 && enemy[index].status == 1)
                 continue;
 
+            Character *actor = (type == 0) ? &party[index] : &enemy[index];
+            Character *targets = (type == 0) ? enemy : party;
+            int target_count = (type == 0) ? num_enemys : num_characters;
+
+            print_actor_turn(actor);
+
             if (type == 0)
             {
-                printf("%sのターン！\n", party[index].name);
-                printf("コマンドを選択してください:\n");
-                printf("1: 攻撃\n");
-                printf("選択: ");
+                printf("  コマンドを選択してください:\n");
+                printf("  0: 情報確認 | 1: 攻撃 | 2: 魔法 | 3: 防御 | 4: 回避\n");
+                printf("  選択: ");
                 scanf("%d", &choose_cmd);
                 command(&party[index], enemy, num_characters, num_enemys, choose_cmd);
             }
             else
             {
-                printf("%sのターン！\n", enemy[index].name);
                 command(&enemy[index], party, num_enemys, num_characters, 1);
             }
 
