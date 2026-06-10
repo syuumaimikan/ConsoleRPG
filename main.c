@@ -17,6 +17,8 @@ int main(void)
 
     int order[2 * MAX_CHARACTERS][3]; // 0:インデックス, 1:素早さ,2:タイプ(0:プレイヤー, 1:エネミー)
 
+    srand((unsigned int)time(NULL));
+
     num_characters = load_characters("characters.csv", party, MAX_RECORDS);
     num_enemys = load_characters("enemies.csv", enemy, MAX_RECORDS);
 
@@ -35,7 +37,7 @@ int main(void)
 
     for (int i = 0; i < num_characters; i++)
     {
-        printf("キャラクター名: %s, レベル: %d, HP: %d, MP: %d, 攻撃: %d, 防御: %d, 回避率: %.2f, 素早さ: %d, クリティカル率: %.2f, クリティカルダメージ: %.1f\n",
+        printf("キャラクター名: %s, レベル: %d, HP: %d, MP: %d, 攻撃: %d, 防御: %d, 回避率: %.2f, 素早さ: %d, クリティカル率: %.2f, クリティカルダメージ: %.1f, 魔法: %s\n",
                party[i].name,
                party[i].level,
                party[i].hp,
@@ -45,12 +47,13 @@ int main(void)
                party[i].evaluation,
                party[i].speed,
                party[i].cc,
-               party[i].cd);
+               party[i].cd,
+               party[i].spells[0] == '\0' ? "なし" : party[i].spells);
     }
 
     for (int i = 0; i < num_enemys; i++)
     {
-        printf("エネミー名: %s, レベル: %d, HP: %d, MP: %d, 攻撃: %d, 防御: %d, 回避率: %.2f, 素早さ: %d, クリティカル率: %.2f, クリティカルダメージ: %.1f\n",
+        printf("エネミー名: %s, レベル: %d, HP: %d, MP: %d, 攻撃: %d, 防御: %d, 回避率: %.2f, 素早さ: %d, クリティカル率: %.2f, クリティカルダメージ: %.1f, 魔法: %s\n",
                enemy[i].name,
                enemy[i].level,
                enemy[i].hp,
@@ -60,7 +63,8 @@ int main(void)
                enemy[i].evaluation,
                enemy[i].speed,
                enemy[i].cc,
-               enemy[i].cd);
+               enemy[i].cd,
+               enemy[i].spells[0] == '\0' ? "なし" : enemy[i].spells);
     }
 
     for (int i = 0; i < num_characters; i++)
@@ -111,11 +115,14 @@ int main(void)
                 printf("  0: 情報確認 | 1: 攻撃 | 2: 魔法 | 3: 防御 | 4: 回避\n");
                 printf("  選択: ");
                 scanf("%d", &choose_cmd);
-                command(&party[index], enemy, num_characters, num_enemys, choose_cmd);
+                command(actor, targets, num_characters, target_count, choose_cmd);
             }
             else
             {
-                command(&enemy[index], party, num_enemys, num_characters, 1);
+                const Spell *castable_spells[MAX_SPELLS];
+                int castable_count = get_castable_spells(actor, castable_spells, MAX_SPELLS);
+                choose_cmd = (castable_count > 0 && rand() % 2 == 0) ? 2 : 1;
+                command(actor, targets, num_enemys, target_count, choose_cmd);
             }
 
             // ゲーム終了条件のチェック
