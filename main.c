@@ -11,9 +11,12 @@ int main(void)
     Character party[MAX_CHARACTERS];
     Character enemy[MAX_CHARACTERS];
 
-    int num_party = 0; // 読み込んだプレイヤー数
-    int num_enemy = 0; // 読み込んだエネミー数
-    int turn = 1;      // 現在のターン数
+    int num_party = 0;    // 読み込んだプレイヤー数
+    int num_enemy = 0;    // 読み込んだエネミー数
+    int turn = 1;         // 現在のターン数
+    int dead_enemies = 0; // 倒されたエネミー数
+    int dead_players = 0; // 倒されたプレイヤー数
+    int total_exp;
 
     // 乱数の初期化
     srand((unsigned int)time(NULL));
@@ -104,12 +107,17 @@ int main(void)
         // 素早さ順に並べ替えて行動順を決める
         for (int i = 0; i < num_party; i++)
         {
-            order[i].speed = party[i].speed + party[i].speed_buff;
+            order[i].index = i;                                    // party[] の正しい番号を再セット
+            order[i].type = TYPE_PLAYER;                           // プレイヤーであることを示す
+            order[i].speed = party[i].speed + party[i].speed_buff; // バフ込みの最新の素早さ
         }
 
+        // エネミーをリストに追加
         for (int i = 0; i < num_enemy; i++)
         {
-            order[num_party + i].speed = enemy[i].speed + enemy[i].speed_buff;
+            order[num_party + i].index = i; // enemy[] の正しい番号を再セット
+            order[num_party + i].type = TYPE_ENEMY;
+            order[num_party + i].speed = enemy[i].speed + enemy[i].speed_buff; // バフ込みの最新の素早さ
         }
 
         sort_order_by_speed(order, total);
@@ -150,7 +158,7 @@ int main(void)
             }
             else
             {
-                // エネミーはAIが自動でコマンドを選ぶ
+                // エネミーは自動でコマンドを選ぶ
                 // MPが足りる魔法があれば50%の確率で魔法を使い、それ以外は攻撃する
                 const Spell *castable_spells[MAX_SPELLS];
                 int castable_count = get_castable_spells(actor, castable_spells, MAX_SPELLS);
@@ -162,7 +170,7 @@ int main(void)
             // ===== ゲーム終了条件を確認する =====
 
             // プレイヤーが全員倒れたか数える
-            int dead_players = 0;
+            dead_players = 0;
             for (int j = 0; j < num_party; j++)
             {
                 if (party[j].status == STATUS_DEAD)
@@ -170,7 +178,7 @@ int main(void)
             }
 
             // エネミーが全員倒れたか数える
-            int dead_enemies = 0;
+            dead_enemies = 0;
             for (int j = 0; j < num_enemy; j++)
             {
                 if (enemy[j].status == STATUS_DEAD)
@@ -197,6 +205,26 @@ int main(void)
         turn++;
         Sleep(1000);
     }
+
+    if (dead_enemies == num_enemy)
+    {
+        printf("プレイヤーの勝利！\n");
+        for (int i = 0; i < num_enemy; i++)
+        {
+            total_exp += enemy[i].drop_exp;
+        }
+        printf("獲得経験値: %d\n", total_exp);
+        for (int i = 0; i < num_party; i++)
+        {
+            gain_exp(&party[i], total_exp / num_party);
+        }
+    }
+    else if (dead_players == num_party)
+    {
+        printf("エネミーの勝利！\n");
+    }
+
+    save_data(party, num_party, "characters.csv");
 
     return 0;
 }

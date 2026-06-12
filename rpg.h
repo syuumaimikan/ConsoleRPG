@@ -15,13 +15,20 @@
 #define MAX_SPELL_TEXT 128 // 魔法リスト文字列の最大文字数（CSV1列分）
 
 // 魔法の効果タイプ
-#define SPELL_DAMAGE 0     // 単体ダメージ
-#define SPELL_HEAL 1       // 単体回復
-#define SPELL_DEATH 2      // 即死（確率）
-#define SPELL_ALL_DAMAGE 3 // 全体ダメージ
-#define SPELL_ATTACK_UP 4  // 攻撃力アップ
-#define SPELL_DEFENSE_UP 5 // 防御力アップ
-#define SPELL_SPEED_UP 6   // 素早さアップ
+#define SPELL_DAMAGE 0       // 単体ダメージ
+#define SPELL_HEAL 1         // 単体回復
+#define SPELL_DEATH 2        // 即死（確率）
+#define SPELL_ALL_DAMAGE 3   // 全体ダメージ
+#define SPELL_ATTACK_UP 4    // 攻撃力アップ
+#define SPELL_DEFENSE_UP 5   // 防御力アップ
+#define SPELL_SPEED_UP 6     // 素早さアップ
+#define SPELL_DRAIN 7        // HP吸収
+#define SPELL_ATTACK_DOWN 8  // 攻撃力ダウン
+#define SPELL_DEFENSE_DOWN 9 // 防御力ダウン
+#define SPELL_REGENE 10      // 継続回復（リジェネ）
+#define SPELL_REVIVE 11      // 蘇生
+#define SPELL_MP_DRAIN 12    // MP吸収
+#define SPELL_MP_HEAL 13     // MP回復
 
 // キャラクタータイプ
 #define TYPE_PLAYER 0 // プレイヤー
@@ -54,14 +61,18 @@ typedef struct
     float critical_damage;       // クリティカルダメージ倍率
     float drop_exp;              // 倒したときに得られる経験値
     char spells[MAX_SPELL_TEXT]; // 使用できる魔法（「|」区切りの文字列）
-    int defend;                  // 防御中フラグ（1ターン）
-    int evade;                   // 回避中フラグ（1ターン）
-    int attack_buff;             // 攻撃上昇量
-    int defense_buff;            // 防御上昇量
-    int speed_buff;              // 素早さ上昇量
-    int attack_buff_turns;       // 攻撃バフの残りターン数
-    int defense_buff_turns;      // 防御バフの残りターン数
-    int speed_buff_turns;        // 素早さバフの残りターン数
+
+    int defend; // 防御中フラグ（1ターン）
+    int evade;  // 回避中フラグ（1ターン）
+
+    int attack_buff;        // 攻撃上昇・減少量
+    int defense_buff;       // 防御上昇・減少量
+    int speed_buff;         // 素早さ上昇・減少量
+    int regene_heal;        // 継続回復量
+    int attack_buff_turns;  // 攻撃バフ・デバフの残りターン数
+    int defense_buff_turns; // 防御バフ・デバフの残りターン数
+    int speed_buff_turns;   // 素早さバフ・デバフの残りターン数
+    int regene_turns;       // 継続回復の残りターン数
 } Character;
 
 // 魔法1つ分のデータ
@@ -99,6 +110,12 @@ static const Spell SPELL_IORA = {"イオラ", 15, 45, SPELL_ALL_DAMAGE};
 static const Spell SPELL_BAIKILT = {"バイキルト", 8, 15, SPELL_ATTACK_UP};
 static const Spell SPELL_SUKURUTO = {"スクルト", 8, 15, SPELL_DEFENSE_UP};
 static const Spell SPELL_PIORIM = {"ピオリム", 6, 15, SPELL_SPEED_UP};
+static const Spell SPELL_DRAIN_LIFE = {"ドレイン", 12, 40, SPELL_DRAIN};
+static const Spell SPELL_LUKANI = {"ルカニ", 6, 20, SPELL_DEFENSE_DOWN};   // 防御力ダウン
+static const Spell SPELL_HENATOS = {"ヘナトス", 6, 20, SPELL_ATTACK_DOWN}; // 攻撃力ダウン
+static const Spell SPELL_REGENE_GIFT = {"リジェネ", 8, 15, SPELL_REGENE};  // 継続回復
+static const Spell SPELL_ZAORIKU = {"ザオリク", 20, 50, SPELL_REVIVE};     // 蘇生（戦闘不能から50%HPで復活）
+static const Spell SPELL_MAHOTORA = {"マホトラ", 0, 15, SPELL_MP_DRAIN};   // MP吸収
 
 // ==============================
 // 関数のプロトタイプ宣言
@@ -166,6 +183,18 @@ const Spell *find_spell_by_name(const char *name)
         return &SPELL_SUKURUTO;
     if (strcmp(name, SPELL_PIORIM.name) == 0)
         return &SPELL_PIORIM;
+    if (strcmp(name, SPELL_DRAIN_LIFE.name) == 0)
+        return &SPELL_DRAIN_LIFE;
+    if (strcmp(name, SPELL_LUKANI.name) == 0)
+        return &SPELL_LUKANI;
+    if (strcmp(name, SPELL_HENATOS.name) == 0)
+        return &SPELL_HENATOS;
+    if (strcmp(name, SPELL_REGENE_GIFT.name) == 0)
+        return &SPELL_REGENE_GIFT;
+    if (strcmp(name, SPELL_ZAORIKU.name) == 0)
+        return &SPELL_ZAORIKU;
+    if (strcmp(name, SPELL_MAHOTORA.name) == 0)
+        return &SPELL_MAHOTORA;
     return NULL; // 一致する魔法が見つからなかった
 }
 
@@ -310,6 +339,9 @@ int load_characters(const char *filename, Character *party, int max_records)
         // '#' で始まる行はコメント行なので読み飛ばす
         if (line[0] == '#' || line[0] == '\0')
             continue;
+
+        // 読み込む前に、構造体の全メンバーを初期化する
+        memset(&party[count], 0, sizeof(Character));
 
         // 魔法欄を空にしてからsscanfで読む（魔法なしのキャラに対応）
         party[count].spells[0] = '\0';
@@ -484,69 +516,186 @@ void death_target(Character *target, const Spell *spell)
     }
 }
 
-// -------- バフ魔法（攻撃力・防御力・素早さを上げる）（cast_spell内で使う） --------
-void buff_target(Character *target, const Spell *spell)
+// -------- 継続回復（リジェネ）をかける（cast_spell内で使う） --------
+void apply_regene(Character *caster, Character *target, const Spell *spell)
 {
+    int turns = (caster == target) ? 4 : 3;
+    target->regene_heal = spell->power;
+    target->regene_turns = turns;
+    printf("  %sにリジェネがかかった！(毎ターン%d回復/%dターン)\n", target->name, spell->power, turns == 4 ? 3 : turns);
+}
+
+// HP吸収（ドレイン）
+void drain_target(Character *caster, Character *target, const Spell *spell)
+{
+    int damage = spell->power + caster->level * 2 - target->defense;
+    if (damage < 0)
+        damage = 0;
+
+    if (target->defend)
+        damage /= 2;
+
+    float dodge = target->dodge_rate;
+    if (target->evade)
+        dodge += 0.3f;
+
+    if ((float)rand() / RAND_MAX < dodge)
+    {
+        printf("  %sは回避した！\n", target->name);
+        return;
+    }
+
+    target->hp -= damage;
+    if (target->hp < 0)
+        target->hp = 0;
+
+    printf("  %sに %d ダメージ！\n", target->name, damage);
+
+    // 与えたダメージ分を回復
+    caster->hp += damage;
+    if (caster->hp > caster->max_hp)
+        caster->hp = caster->max_hp;
+
+    printf("  %sは HP を %d 吸収した！(現在HP: %d/%d)\n", caster->name, damage, caster->hp, caster->max_hp);
+
+    if (target->hp == 0)
+    {
+        printf("  ★ %sは倒れた！\n", target->name);
+        target->status = STATUS_DEAD;
+    }
+    target->defend = 0;
+    caster->evade = 0;
+}
+
+// MP吸収（マホトラ）
+void mp_drain_target(Character *caster, Character *target, const Spell *spell)
+{
+    int amount = spell->power;
+    if (target->mp < amount)
+        amount = target->mp; // 相手の残りMP以上に奪うことはできない
+
+    target->mp -= amount;
+    caster->mp += amount;
+    if (caster->mp > caster->max_mp)
+        caster->mp = caster->max_mp;
+
+    printf("  %sのMPを %d 奪い取った！\n", target->name, amount);
+    printf("  %sの残りMP: %d\n", caster->name, caster->mp);
+}
+
+// 蘇生（ザオリク）
+void revive_target(Character *target, const Spell *spell)
+{
+    target->status = STATUS_ALIVE;
+    target->hp = (target->max_hp * spell->power) / 100; // spell->powerを復活HP割合（%）とする
+    if (target->hp <= 0)
+        target->hp = 1;
+
+    printf("  ★ %sが息を吹き返した！(HP: %d/%d)\n", target->name, target->hp, target->max_hp);
+}
+
+// -------- バフ魔法 --------
+void apply_buff_debuff(Character *caster, Character *target, const Spell *spell)
+{
+    int turns = (caster == target) ? 4 : 3;
+
     switch (spell->effect_type)
     {
     case SPELL_ATTACK_UP:
         target->attack_buff = spell->power;
-        target->attack_buff_turns = 3;
-
-        printf("  %sの攻撃力が上がった！(3ターン)\n", target->name);
+        target->attack_buff_turns = turns;
+        printf("  %sの攻撃力が上がった！(%dターン)\n", target->name, turns == 4 ? 3 : turns);
         break;
-
+    case SPELL_ATTACK_DOWN:
+        target->attack_buff = -spell->power;
+        target->attack_buff_turns = turns;
+        printf("  %sの攻撃力が下がった！(%dターン)\n", target->name, turns == 4 ? 3 : turns);
+        break;
     case SPELL_DEFENSE_UP:
         target->defense_buff = spell->power;
-        target->defense_buff_turns = 3;
-
-        printf("  %sの防御力が上がった！(3ターン)\n", target->name);
+        target->defense_buff_turns = turns;
+        printf("  %sの防御力が上がった！(%dターン)\n", target->name, turns == 4 ? 3 : turns);
         break;
-
+    case SPELL_DEFENSE_DOWN:
+        target->defense_buff = -spell->power;
+        target->defense_buff_turns = turns;
+        printf("  %sの防御力が下がった！(%dターン)\n", target->name, turns == 4 ? 3 : turns);
+        break;
     case SPELL_SPEED_UP:
         target->speed_buff = spell->power;
-        target->speed_buff_turns = 3;
-
-        printf("  %sの素早さが上がった！(3ターン)\n", target->name);
+        target->speed_buff_turns = turns;
+        printf("  %sの素早さが上がった！(%dターン)\n", target->name, turns == 4 ? 3 : turns);
         break;
     }
 }
 
 void update_buffs(Character *ch)
 {
-    // 攻撃バフ
+    // 攻撃バフ・デバフ
     if (ch->attack_buff_turns > 0)
     {
         ch->attack_buff_turns--;
-
         if (ch->attack_buff_turns == 0)
         {
+            if (ch->attack_buff > 0)
+                printf("  %sの攻撃力上昇が切れた！\n", ch->name);
+            else if (ch->attack_buff < 0)
+                printf("  %sの攻撃力低下が元に戻った！\n", ch->name);
             ch->attack_buff = 0;
-            printf("%sの攻撃力上昇が切れた！\n", ch->name);
         }
     }
 
-    // 防御バフ
+    // 防御バフ・デバフ
     if (ch->defense_buff_turns > 0)
     {
         ch->defense_buff_turns--;
-
         if (ch->defense_buff_turns == 0)
         {
+            if (ch->defense_buff > 0)
+                printf("  %sの防御力上昇が切れた！\n", ch->name);
+            else if (ch->defense_buff < 0)
+                printf("  %sの防御力低下が元に戻った！\n", ch->name);
             ch->defense_buff = 0;
-            printf("%sの防御力上昇が切れた！\n", ch->name);
         }
     }
 
-    // 素早さバフ
+    // 素早さバフ・デバフ
     if (ch->speed_buff_turns > 0)
     {
         ch->speed_buff_turns--;
-
         if (ch->speed_buff_turns == 0)
         {
+            if (ch->speed_buff > 0)
+                printf("  %sの素早さ上昇が切れた！\n", ch->name);
+            else if (ch->speed_buff < 0)
+                printf("  %sの素早さ低下が元に戻った！\n", ch->name);
             ch->speed_buff = 0;
-            printf("%sの素早さ上昇が切れた！\n", ch->name);
+        }
+    }
+
+    // 継続回復
+    if (ch->regene_turns > 0)
+    {
+        ch->regene_turns--;
+        if (ch->status == STATUS_ALIVE)
+        {
+            ch->hp += ch->regene_heal;
+            if (ch->hp > ch->max_hp)
+                ch->hp = ch->max_hp;
+
+            printf("  %sはリジェネの効果で HP が %d 回復した！(残り%dターン)\n", ch->name, ch->regene_heal, ch->regene_turns);
+
+            if (ch->regene_turns == 0)
+            {
+                printf("  %sのリジェネ効果が切れた！\n", ch->name);
+                ch->regene_heal = 0;
+            }
+        }
+        else
+        {
+            // 戦闘不能になったらリジェネはクリア
+            ch->regene_turns = 0;
+            ch->regene_heal = 0;
         }
     }
 }
@@ -558,7 +707,6 @@ void cast_spell(Character *caster,
                 Character *allies, int ally_count,
                 const Spell *spell, int selected_index)
 {
-    // MPが足りなければ何もしない
     if (caster->mp < spell->mp_cost)
     {
         printf("MPが足りません\n");
@@ -567,47 +715,69 @@ void cast_spell(Character *caster,
     }
 
     printf("  %sは%sを唱えた！\n", caster->name, spell->name);
-    caster->mp -= spell->mp_cost; // MPを消費する
+    caster->mp -= spell->mp_cost;
 
-    // 効果タイプによって処理を分ける
+    // 【修正・追加】効果タイプによる処理の分岐
     if (spell->effect_type == SPELL_HEAL)
     {
-        // 回復魔法：対象が有効かチェックして回復する
         if (selected_index < 0 || selected_index >= ally_count || allies[selected_index].status != STATUS_ALIVE)
-        {
             printf("対象がいません\n");
-        }
         else
-        {
             heal_target(&allies[selected_index], spell);
-        }
+    }
+    else if (spell->effect_type == SPELL_REVIVE)
+    {
+        // 蘇生魔法：戦闘不能の味方が対象
+        if (selected_index < 0 || selected_index >= ally_count || allies[selected_index].status != STATUS_DEAD)
+            printf("対象がいないか、またはまだ生存しています\n");
+        else
+            revive_target(&allies[selected_index], spell);
+    }
+    else if (spell->effect_type == SPELL_REGENE)
+    {
+        if (selected_index < 0 || selected_index >= ally_count || allies[selected_index].status != STATUS_ALIVE)
+            printf("対象がいません\n");
+        else
+            apply_regene(caster, &allies[selected_index], spell);
     }
     else if (spell->effect_type == SPELL_ATTACK_UP || spell->effect_type == SPELL_DEFENSE_UP || spell->effect_type == SPELL_SPEED_UP)
     {
         if (selected_index < 0 || selected_index >= ally_count || allies[selected_index].status != STATUS_ALIVE)
-        {
             printf("対象がいません\n");
-        }
         else
-        {
-            buff_target(&allies[selected_index], spell);
-        }
+            apply_buff_debuff(caster, &allies[selected_index], spell);
+    }
+    else if (spell->effect_type == SPELL_ATTACK_DOWN || spell->effect_type == SPELL_DEFENSE_DOWN)
+    {
+        // 敵へのデバフ魔法
+        if (selected_index < 0 || selected_index >= target_count || targets[selected_index].status != STATUS_ALIVE)
+            printf("対象がいません\n");
+        else
+            apply_buff_debuff(caster, &targets[selected_index], spell);
+    }
+    else if (spell->effect_type == SPELL_DRAIN)
+    {
+        if (selected_index < 0 || selected_index >= target_count || targets[selected_index].status != STATUS_ALIVE)
+            printf("対象がいません\n");
+        else
+            drain_target(caster, &targets[selected_index], spell);
+    }
+    else if (spell->effect_type == SPELL_MP_DRAIN)
+    {
+        if (selected_index < 0 || selected_index >= target_count || targets[selected_index].status != STATUS_ALIVE)
+            printf("対象がいません\n");
+        else
+            mp_drain_target(caster, &targets[selected_index], spell);
     }
     else if (spell->effect_type == SPELL_DEATH)
     {
-        // 即死魔法：対象1体に即死を試みる
         if (selected_index < 0 || selected_index >= target_count || targets[selected_index].status != STATUS_ALIVE)
-        {
             printf("対象がいません\n");
-        }
         else
-        {
             death_target(&targets[selected_index], spell);
-        }
     }
     else if (spell->effect_type == SPELL_ALL_DAMAGE)
     {
-        // 全体ダメージ魔法：生存している全員にダメージを与える
         for (int i = 0; i < target_count; i++)
         {
             if (targets[i].status == STATUS_ALIVE)
@@ -616,15 +786,10 @@ void cast_spell(Character *caster,
     }
     else
     {
-        // 単体ダメージ魔法
         if (selected_index < 0 || selected_index >= target_count || targets[selected_index].status != STATUS_ALIVE)
-        {
             printf("対象がいません\n");
-        }
         else
-        {
             damage_target(caster, &targets[selected_index], spell);
-        }
     }
 
     printf("  %sの残りMP: %d\n", caster->name, caster->mp);
@@ -699,22 +864,19 @@ void command(Character *actor,
         }
         break;
 
-    // ===== 2: 魔法 =====
+        // ===== 2: 魔法 =====
     case 2:
         if (actor->type == TYPE_PLAYER)
         {
-            // プレイヤーの魔法処理
             const Spell *spells[MAX_SPELLS];
             int spell_count = get_available_spells(actor, spells, MAX_SPELLS);
             int spell_index;
             int next_cmd;
 
-            // 魔法を覚えていなければコマンドを再入力してもらう
             if (spell_count == 0)
             {
                 printf("%sは魔法を覚えていません\n", actor->name);
                 printf("--------------------------------\n");
-
                 printf("  コマンドを選択してください:\n");
                 printf("  0: 情報確認 | 1: 攻撃 | 2: 魔法 | 3: 防御 | 4: 回避\n");
                 printf("  選択: ");
@@ -723,7 +885,6 @@ void command(Character *actor,
                 break;
             }
 
-            // 使える魔法の一覧を表示する
             printf("使用する魔法を選択してください:\n");
             for (int i = 0; i < spell_count; i++)
                 printf("  %d: %s (消費MP: %d)\n", i, spells[i]->name, spells[i]->mp_cost);
@@ -738,15 +899,38 @@ void command(Character *actor,
                 return;
             }
 
-            // 魔法タイプに応じて対象を選ぶ
-            if (spells[spell_index]->effect_type == SPELL_HEAL || spells[spell_index]->effect_type == SPELL_ATTACK_UP || spells[spell_index]->effect_type == SPELL_DEFENSE_UP || spells[spell_index]->effect_type == SPELL_SPEED_UP)
+            // 魔法タイプに応じて表示するステータスを切り替えて対象を選ぶ
+            if (spells[spell_index]->effect_type == SPELL_HEAL ||
+                spells[spell_index]->effect_type == SPELL_ATTACK_UP ||
+                spells[spell_index]->effect_type == SPELL_DEFENSE_UP ||
+                spells[spell_index]->effect_type == SPELL_SPEED_UP ||
+                spells[spell_index]->effect_type == SPELL_REGENE)
             {
-                // 味方から対象を選ぶ
+                // 生存している味方から対象を選ぶ
                 printf("対象を選択してください:\n");
                 for (int i = 0; i < ally_count; i++)
                 {
                     if (allies[i].status == STATUS_ALIVE)
-                        printf("  %d: %s (HP: %d/%d)\n", i, allies[i].name, allies[i].hp, allies[i].max_hp);
+                    {
+                        switch (spells[spell_index]->effect_type)
+                        {
+                        case SPELL_HEAL:
+                            printf("  %d: %s (HP: %d/%d)\n", i, allies[i].name, allies[i].hp, allies[i].max_hp);
+                            break;
+                        case SPELL_ATTACK_UP:
+                            printf("  %d: %s (攻撃力: %d)\n", i, allies[i].name, allies[i].attack + allies[i].attack_buff);
+                            break;
+                        case SPELL_DEFENSE_UP:
+                            printf("  %d: %s (防御力: %d)\n", i, allies[i].name, allies[i].defense + allies[i].defense_buff);
+                            break;
+                        case SPELL_SPEED_UP:
+                            printf("  %d: %s (素早さ: %d)\n", i, allies[i].name, allies[i].speed + allies[i].speed_buff);
+                            break;
+                        case SPELL_REGENE:
+                            printf("  %d: %s (HP: %d/%d, リジェネ回復量: +%d/T)\n", i, allies[i].name, allies[i].hp, allies[i].max_hp, spells[spell_index]->power);
+                            break;
+                        }
+                    }
                 }
                 printf("選択: ");
                 scanf("%d", &target_index);
@@ -758,19 +942,60 @@ void command(Character *actor,
                     return;
                 }
             }
+            else if (spells[spell_index]->effect_type == SPELL_REVIVE)
+            {
+                // 蘇生魔法：死亡している味方から対象を選ぶ
+                printf("生き返らせる対象を選択してください:\n");
+                int dead_count = 0;
+                for (int i = 0; i < ally_count; i++)
+                {
+                    if (allies[i].status == STATUS_DEAD)
+                    {
+                        printf("  %d: %s\n", i, allies[i].name);
+                        dead_count++;
+                    }
+                }
+                if (dead_count == 0)
+                {
+                    printf("蘇生できる対象がいません\n");
+                    command(actor, targets, target_count, allies, ally_count, cmd);
+                    return;
+                }
+                printf("選択: ");
+                scanf("%d", &target_index);
+
+                if (target_index < 0 || target_index >= ally_count || allies[target_index].status != STATUS_DEAD)
+                {
+                    printf("無効な選択です\n");
+                    command(actor, targets, target_count, allies, ally_count, cmd);
+                    return;
+                }
+            }
             else if (spells[spell_index]->effect_type == SPELL_ALL_DAMAGE)
             {
-                // 全体魔法：対象選択は不要
-                target_index = -1;
+                target_index = -1; // 全体魔法
             }
             else
             {
-                // 単体ダメージ・即死魔法：敵から対象を選ぶ
+                // 敵を対象とする魔法（単体ダメージ、デバフ、ドレイン、MP吸収、即死）
                 printf("魔法の対象を選択してください:\n");
                 for (int i = 0; i < target_count; i++)
                 {
                     if (targets[i].status == STATUS_ALIVE)
-                        printf("  %d: %s (HP: %d)\n", i, targets[i].name, targets[i].hp);
+                    {
+                        switch (spells[spell_index]->effect_type)
+                        {
+                        case SPELL_ATTACK_DOWN:
+                            printf("  %d: %s (攻撃力: %d)\n", i, targets[i].name, targets[i].attack + targets[i].attack_buff);
+                            break;
+                        case SPELL_DEFENSE_DOWN:
+                            printf("  %d: %s (防御力: %d)\n", i, targets[i].name, targets[i].defense + targets[i].defense_buff);
+                            break;
+                        default:
+                            printf("  %d: %s (HP: %d)\n", i, targets[i].name, targets[i].hp);
+                            break;
+                        }
+                    }
                 }
                 printf("選択: ");
                 scanf("%d", &target_index);
@@ -783,37 +1008,44 @@ void command(Character *actor,
                 }
             }
 
-            cast_spell(actor, targets, target_count, allies, ally_count,
-                       spells[spell_index], target_index);
+            cast_spell(actor, targets, target_count, allies, ally_count, spells[spell_index], target_index);
         }
         else
         {
-            // エネミーの魔法処理：使える魔法の中からランダムに選ぶ
+            // エネミーの魔法自動処理
             const Spell *spells[MAX_SPELLS];
             int spell_count = get_castable_spells(actor, spells, MAX_SPELLS);
 
-            // MPが足りる魔法がなければ通常攻撃にする
             if (spell_count == 0)
             {
                 target_index = choose_random_alive_index(targets, target_count);
                 if (target_index < 0)
                     return;
-
                 attack(actor, &targets[target_index]);
                 break;
             }
 
-            // ランダムに魔法を1つ選んで使う
             const Spell *spell = spells[rand() % spell_count];
 
-            if (spell->effect_type == SPELL_HEAL)
+            if (spell->effect_type == SPELL_HEAL || spell->effect_type == SPELL_REGENE)
             {
                 target_index = choose_random_wounded_index(allies, ally_count);
             }
-            else if (
-                spell->effect_type == SPELL_ATTACK_UP || spell->effect_type == SPELL_DEFENSE_UP || spell->effect_type == SPELL_SPEED_UP)
+            else if (spell->effect_type == SPELL_ATTACK_UP || spell->effect_type == SPELL_DEFENSE_UP || spell->effect_type == SPELL_SPEED_UP)
             {
                 target_index = choose_random_alive_index(allies, ally_count);
+            }
+            else if (spell->effect_type == SPELL_REVIVE)
+            {
+                // 死亡している味方エネミーを探す
+                int dead_indexes[MAX_CHARACTERS];
+                int dead_count = 0;
+                for (int j = 0; j < ally_count; j++)
+                {
+                    if (allies[j].status == STATUS_DEAD)
+                        dead_indexes[dead_count++] = j;
+                }
+                target_index = (dead_count > 0) ? dead_indexes[rand() % dead_count] : -1;
             }
             else if (spell->effect_type == SPELL_ALL_DAMAGE)
             {
@@ -824,9 +1056,14 @@ void command(Character *actor,
                 target_index = choose_random_alive_index(targets, target_count);
             }
 
-            // 全体魔法以外で対象がいなければ何もしない
+            // 蘇生魔法以外で対象が見つからない場合は通常攻撃
             if (target_index < 0 && spell->effect_type != SPELL_ALL_DAMAGE)
-                return;
+            {
+                target_index = choose_random_alive_index(targets, target_count);
+                if (target_index >= 0)
+                    attack(actor, &targets[target_index]);
+                break;
+            }
 
             cast_spell(actor, targets, target_count, allies, ally_count, spell, target_index);
         }
@@ -889,6 +1126,69 @@ void print_turn_start(int turn)
 void print_actor_turn(Character *ch)
 {
     printf(">【%s】のターン（HP: %d）\n", ch->name, ch->hp);
+}
+
+void lvl_up(Character *ch)
+{
+    ch->level++;
+    ch->max_hp += 10;
+    ch->hp = ch->max_hp; // レベルアップでHP全回復
+    ch->max_mp += 5;
+    ch->mp = ch->max_mp; // レベルアップでMP全回復
+    ch->attack += 2;
+    ch->defense += 2;
+    ch->speed += 1;
+
+    printf("%sはレベルアップ！ レベル%dになった！\n", ch->name, ch->level);
+}
+
+void gain_exp(Character *ch, float exp)
+{
+    printf("%sは%.1fの経験値を得た！\n", ch->name, exp);
+    ch->drop_exp += exp;
+
+    // 経験値が10以上ならレベルアップ
+    while (ch->drop_exp >= 10 + ch->level * 2)
+    {
+        ch->drop_exp -= 10 + ch->level * 2; // レベルに応じて必要経験値が増える
+        lvl_up(ch);
+    }
+}
+
+void save_data(const Character *party, int count, const char *filename)
+{
+    FILE *fp = fopen(filename, "w");
+    if (!fp)
+    {
+        perror("ファイルを開けませんでした");
+        return;
+    }
+
+    // ヘッダー行
+    fprintf(fp, "status,type,name,level,hp,max_hp,mp,max_mp,attack,defense,dodge_rate,speed,critical_rate,critical_damage,drop_exp,spells\n");
+    for (int i = 0; i < count; i++)
+    {
+        fprintf(fp,
+                "%d,%d,%s,%d,%d,%d,%d,%d,%d,%d,%f,%d,%f,%f,%f,%s\n",
+                party[i].status,
+                party[i].type,
+                party[i].name,
+                party[i].level,
+                party[i].hp,
+                party[i].max_hp,
+                party[i].mp,
+                party[i].max_mp,
+                party[i].attack,
+                party[i].defense,
+                party[i].dodge_rate,
+                party[i].speed,
+                party[i].critical_rate,
+                party[i].critical_damage,
+                party[i].drop_exp,
+                party[i].spells);
+    }
+
+    fclose(fp);
 }
 
 #endif /* RPG_H */
